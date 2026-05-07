@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>관리자 제어판</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .header { background: #1a237e; color: white; padding: 20px 0; }
+        .card { border-radius: 12px; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+    </style>
+</head>
+<body class="bg-light">
+    <div class="header mb-4">
+        <div class="container d-flex justify-content-between align-items-center">
+            <h3>🛡️ 신도고 발표마당 관리 <span id="timer" class="badge bg-danger ms-2">00:00</span></h3>
+            <div>
+                <a href="/admin/download" class="btn btn-warning fw-bold">엑셀 상세결과 다운로드</a>
+                <a href="/logout" class="btn btn-outline-light ms-2">로그아웃</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card p-3">
+                    <div class="row align-items-center">
+                        <div class="col-md-5">
+                            <form action="/admin/set_timer" method="POST" class="d-flex gap-2">
+                                <span class="fw-bold align-self-center">⏲️ 타이머 설정:</span>
+                                <input type="number" name="minutes" class="form-control" placeholder="분(정수)" style="width:100px" required>
+                                <button class="btn btn-dark">시작/변경</button>
+                            </form>
+                        </div>
+                        <div class="col-md-7">
+                            <form action="/admin/set_notice" method="POST" class="d-flex gap-2">
+                                <span class="fw-bold align-self-center">📢 공지:</span>
+                                <input type="text" name="notice" class="form-control" placeholder="심사위원들에게 보낼 메시지">
+                                <button class="btn btn-primary">전송</button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-12 mb-4">
+                <div class="card p-4">
+                    <h5 class="fw-bold text-primary mb-3">📊 실시간 심사 현황 (60:10:10:10:10 비율 반영)</h5>
+                    <table class="table table-bordered text-center align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>팀명</th>
+                                {% for e in evaluators %} <th>{{ e.name }}</th> {% endfor %}
+                                <th class="table-warning">현재 평균</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for t in teams %}
+                            <tr>
+                                <td class="fw-bold">{{ t.name }}</td>
+                                {% for e in evaluators %}
+                                    {% set info = score_map[t.id].get(e.code) %}
+                                    <td>
+                                        {% if info %}
+                                            <div class="d-flex flex-column align-items-center">
+                                                <span class="{{ 'text-success fw-bold' if info.is_submitted else 'text-muted' }}">
+                                                    {{ info.val }}{{ ' (완)' if info.is_submitted }}
+                                                </span>
+                                                <a href="/admin/delete_score/{{ info.id }}" 
+                                                   class="badge bg-light text-danger text-decoration-none border mt-1"
+                                                   onclick="return confirm('이 위원의 점수를 초기화하시겠습니까?')"
+                                                   style="font-size: 0.7rem;">삭제</a>
+                                            </div>
+                                        {% else %}-{% endif %}
+                                    </td>
+                                {% endfor %}
+                                <td class="table-warning fw-bold">{{ team_averages[t.id] }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="col-md-6">
+                <div class="card p-3">
+                    <h6>👥 팀 추가</h6>
+                    <form action="/admin/add_team" method="POST" class="row g-2">
+                        <div class="col-4"><input type="text" name="name" class="form-control" placeholder="팀명" required></div>
+                        <div class="col-4"><input type="text" name="leader" class="form-control" placeholder="팀장" required></div>
+                        <div class="col-4"><input type="text" name="topic" class="form-control" placeholder="주제" required></div>
+                        <div class="col-12"><button class="btn btn-success btn-sm w-100">팀 등록</button></div>
+                    </form>
+                    <hr>
+                    {% for t in teams %}
+                    <div class="d-flex justify-content-between small mb-1">{{ t.name }} ({{t.leader}}) <a href="/admin/delete_team/{{t.id}}" class="text-danger" onclick="return confirm('삭제할까요?')">삭제</a></div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <div class="col-md-6">
+                <div class="card p-3">
+                    <h6>👨‍⚖️ 심사위원 추가</h6>
+                    <form action="/admin/add_evaluator" method="POST" class="row g-2">
+                        <div class="col-5"><input type="text" name="name" class="form-control" placeholder="이름" required></div>
+                        <div class="col-5"><input type="text" name="code" class="form-control" placeholder="접속코드" required></div>
+                        <div class="col-2"><button class="btn btn-success btn-sm w-100">+</button></div>
+                    </form>
+                    <hr>
+                    {% for e in evaluators %}
+                    <div class="d-flex justify-content-between small mb-1">{{ e.name }} ({{e.code}}) <a href="/admin/delete_evaluator/{{e.id}}" class="text-danger" onclick="return confirm('삭제할까요?')">삭제</a></div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function updateTimer() {
+            fetch('/api/status').then(r => r.json()).then(s => {
+                const el = document.getElementById('timer');
+                if(s.timer_end) {
+                    const diff = new Date(s.timer_end) - Date.now();
+                    if(diff > 0) {
+                        const m = Math.floor(diff/60000), sec = Math.floor((diff%60000)/1000);
+                        el.innerText = `${m}:${sec<10?'0'+sec:sec}`;
+                    } else { el.innerText = "종료"; }
+                } else { el.innerText = "00:00"; }
+            });
+        }
+        setInterval(updateTimer, 1000);
+        setTimeout(() => location.reload(), 15000); // 15초마다 점수판 자동 갱신
+    </script>
+</body>
+</html>

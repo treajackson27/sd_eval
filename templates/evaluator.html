@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>심사위원 평가판</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .top-nav { background: #2c3e50; color: white; padding: 10px 0; position: sticky; top: 0; z-index: 100; }
+        .team-card { border-radius: 15px; margin-bottom: 20px; border-left: 5px solid #3498db; }
+        .save-indicator { font-size: 0.8rem; color: #f39c12; opacity: 0; transition: opacity 0.3s; }
+        .criteria-label { font-size: 0.75rem; font-weight: bold; color: #555; height: 35px; display: flex; align-items: center; justify-content: center; text-align: center; }
+    </style>
+</head>
+<body class="bg-light">
+    <div class="top-nav shadow">
+        <div class="container d-flex justify-content-between align-items-center">
+            <div>
+                <span class="fw-bold text-info">👤 {{ name }} 심사위원님</span>
+                <span class="ms-3 small" id="notice">📢 {{ controls.notice }}</span>
+            </div>
+            <div class="d-flex align-items-center gap-3">
+                <div id="timer" class="badge bg-danger fs-6">00:00</div>
+                <a href="/logout" class="btn btn-sm btn-outline-light">로그아웃</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="container mt-4">
+        {% for t in teams %}
+        {% set s = scores.get(t.id) %}
+        <div class="card team-card p-3 shadow-sm">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <h5 class="fw-bold mb-0 text-dark">{{ t.name }} <small class="text-muted">| {{ t.topic }}</small></h5>
+                <div>
+                    <span id="saved_{{t.id}}" class="save-indicator me-2">자동 저장됨</span>
+                    {% if s and s.is_submitted %}<span class="badge bg-success">제출완료</span>{% endif %}
+                </div>
+            </div>
+            <div class="row g-2 align-items-center">
+                <div class="col-md-8">
+                    <div class="row g-2 text-center">
+                        <div class="col-4">
+                            <div class="criteria-label">탐구 보고서(60%)</div>
+                            <input type="number" id="v1_{{t.id}}" class="form-control" oninput="validate(this); c({{t.id}}); autoSave({{t.id}})" value="{{s.report if s else ''}}" min="0" max="100" {{'disabled' if s and s.is_submitted}}>
+                        </div>
+                        <div class="col-2">
+                            <div class="criteria-label">주제 전달력(10%)</div>
+                            <input type="number" id="v2_{{t.id}}" class="form-control" oninput="validate(this); c({{t.id}}); autoSave({{t.id}})" value="{{s.delivery if s else ''}}" min="0" max="100" {{'disabled' if s and s.is_submitted}}>
+                        </div>
+                        <div class="col-2">
+                            <div class="criteria-label">언어적 표현(10%)</div>
+                            <input type="number" id="v3_{{t.id}}" class="form-control" oninput="validate(this); c({{t.id}}); autoSave({{t.id}})" value="{{s.expression if s else ''}}" min="0" max="100" {{'disabled' if s and s.is_submitted}}>
+                        </div>
+                        <div class="col-2">
+                            <div class="criteria-label">구성원 협동(10%)</div>
+                            <input type="number" id="v4_{{t.id}}" class="form-control" oninput="validate(this); c({{t.id}}); autoSave({{t.id}})" value="{{s.teamwork if s else ''}}" min="0" max="100" {{'disabled' if s and s.is_submitted}}>
+                        </div>
+                        <div class="col-2">
+                            <div class="criteria-label">소감 및 비전(10%)</div>
+                            <input type="number" id="v5_{{t.id}}" class="form-control" oninput="validate(this); c({{t.id}}); autoSave({{t.id}})" value="{{s.vision if s else ''}}" min="0" max="100" {{'disabled' if s and s.is_submitted}}>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-1 text-center">
+                    <div class="bg-light p-2 rounded border">
+                        <small class="d-block" style="font-size: 0.7rem;">합계</small>
+                        <strong class="fs-5 text-primary" id="t_{{t.id}}">0.0</strong>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <textarea id="m_{{t.id}}" class="form-control form-control-sm mb-1" placeholder="메모" oninput="autoSave({{t.id}})" {{'disabled' if s and s.is_submitted}}>{{s.memo if s else ''}}</textarea>
+                    {% if not s or not s.is_submitted %}
+                    <button class="btn btn-primary btn-sm w-100" onclick="save({{t.id}}, true)">최종 제출</button>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <script>
+        function validate(el) {
+            if(el.value !== "") {
+                el.value = Math.round(el.value);
+                if(el.value > 100) el.value = 100;
+                if(el.value < 0) el.value = 0;
+            }
+        }
+        function c(id) {
+            const v1 = (document.getElementById('v1_'+id).value || 0) * 0.6;
+            const v2 = (document.getElementById('v2_'+id).value || 0) * 0.1;
+            const v3 = (document.getElementById('v3_'+id).value || 0) * 0.1;
+            const v4 = (document.getElementById('v4_'+id).value || 0) * 0.1;
+            const v5 = (document.getElementById('v5_'+id).value || 0) * 0.1;
+            document.getElementById('t_'+id).innerText = (v1+v2+v3+v4+v5).toFixed(1);
+        }
+        let saveTimeouts = {};
+        function autoSave(id) {
+            clearTimeout(saveTimeouts[id]);
+            saveTimeouts[id] = setTimeout(() => {
+                save(id, false);
+                const indicator = document.getElementById('saved_'+id);
+                indicator.style.opacity = 1;
+                setTimeout(() => indicator.style.opacity = 0, 1500);
+            }, 600);
+        }
+        function save(id, final) {
+            if(final && !confirm("제출하면 수정할 수 없습니다. 제출할까요?")) return;
+            fetch('/api/submit', {
+                method:'POST', headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({
+                    team_id: id, 
+                    report: document.getElementById('v1_'+id).value, 
+                    delivery: document.getElementById('v2_'+id).value,
+                    expression: document.getElementById('v3_'+id).value, 
+                    teamwork: document.getElementById('v4_'+id).value, 
+                    vision: document.getElementById('v5_'+id).value, 
+                    memo: document.getElementById('m_'+id).value, 
+                    final: final
+                })
+            }).then(r => r.json()).then(res => { if(final && res.success) location.reload(); });
+        }
+        function updateStatus() {
+            fetch('/api/status').then(r => r.json()).then(s => {
+                document.getElementById('notice').innerText = "📢 " + s.notice;
+                if(s.timer_end) {
+                    const diff = new Date(s.timer_end) - Date.now();
+                    if(diff > 0) {
+                        const m = Math.floor(diff/60000), sec = Math.floor((diff%60000)/1000);
+                        document.getElementById('timer').innerText = `${m}:${sec<10?'0'+sec:sec}`;
+                    } else { document.getElementById('timer').innerText = "종료"; }
+                }
+            });
+        }
+        setInterval(updateStatus, 1000);
+        window.onload = () => { {% for t in teams %} c({{t.id}}); {% endfor %} };
+    </script>
+</body>
+</html>
